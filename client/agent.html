@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Voice Chat with Leo</title>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.0.4/dist/livekit-client.umd.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        #transcript {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+
+        .message {
+            margin: 8px 0;
+        }
+
+        .user {
+            color: blue;
+        }
+
+        .agent {
+            color: green;
+        }
+
+        .interim {
+            opacity: 0.6;
+            font-style: italic;
+        }
+
+        #agentStatus {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Voice Chat with Leo</h1>
+    <button id="joinBtn">Join Chat</button>
+    <button id="leaveBtn" disabled>Leave Chat</button>
+    <audio id="audioOutput" autoplay controls></audio>
+
+    <div id="agentStatus">Agent status: not connected</div>
+    <div id="transcript"></div>
+
+    <script>
+        const { Room, RoomEvent, createLocalTracks, DataPacketKind } = LivekitClient;
+        let room;
+        const joinBtn = document.getElementById('joinBtn');
+        const leaveBtn = document.getElementById('leaveBtn');
+        const audioOutput = document.getElementById('audioOutput');
+        const transcriptDiv = document.getElementById('transcript');
+        const agentStatus = document.getElementById('agentStatus');
+        let lastMessageDiv = null;
+
+        // Helper to add messages to transcript
+        function addMessage(role, text, isInterim = false) {
+            if (isInterim && lastMessageDiv && lastMessageDiv.dataset.role === role && lastMessageDiv.dataset.isInterim === 'true') {
+                lastMessageDiv.textContent = `${role === 'user' ? 'You' : 'Leo'}: ${text}`;
+                return;
+            }
+
+            const div = document.createElement('div');
+            div.className = `message ${role} ${isInterim ? 'interim' : ''}`;
+            div.textContent = `${role === 'user' ? 'You' : 'Leo'}: ${text}`;
+            div.dataset.role = role;
+            div.dataset.isInterim = isInterim ? 'true' : 'false';
+
+            // If we were showing an interim message and now have a final one, or a new speaker, remove the 'interim' styling
+            if (!isInterim && lastMessageDiv && lastMessageDiv.dataset.role === role && lastMessageDiv.dataset.isInterim === 'true') {
+                lastMessageDiv.textContent = div.textContent;
+                lastMessageDiv.classList.remove('interim');
+                lastMessageDiv.dataset.isInterim = 'false';
+                return;
+            }
+
+            transcriptDiv.appendChild(div);
+            transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+            lastMessageDiv = div;
+        }
+
+        joinBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('http://localhost:3000/get-token?room=voice-chat-room&user=user');
+                const { token } = await response.json();
+
+                room = new Room();
+
+                // Listen for transcription text events (modern approach)
+                room.on(RoomEvent.TranscriptionReceived, (transcriptions, participant, publication) => {
+                    transcriptions.forEach((transcription) => {
+                        const isAgent = participant?.identity.includes('agent') || participant?.metadata?.includes('agent');
+                        const role = isAgent ? 'agent' : 'user';
+
+                        // The segment.text contains the transcribed text
+                        addMessage(role, transcription.text, !transcription.isFinal);
+                    });
+                });
+
+                // Agent state via track metadata
+                room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    if (track.kind === 'audio' && participant.identity.includes('agent')) {
+                        track.attach(audioOutput);
+                        audioOutput.play().catch(console.warn);
+
+                        const updateStatus = () => {
+                            const meta = publication.metadata || '';
+                            if (meta.includes('speaking')) agentStatus.textContent = 'Agent status: speaking';
+                            else if (meta.includes('thinking')) agentStatus.textContent = 'Agent status: thinking';
+                            else if (meta.includes('listening')) agentStatus.textContent = 'Agent status: listening';
+                        };
+                        updateStatus();
+                        publication.on('metadataChanged', updateStatus);
+                    }
+                });
+
+                await room.connect('wss://your-livekit-server.livekit.cloud', token);
+                await room.startAudio();
+
+                const tracks = await createLocalTracks({ audio: true });
+                for (const track of tracks) {
+                    await room.localParticipant.publishTrack(track);
+                }
+
+                console.log('Joined room successfully');
+                joinBtn.disabled = true;
+                leaveBtn.disabled = false;
+                agentStatus.textContent = 'Agent status: joined';
+            } catch (error) {
+                console.error('Error joining chat:', error);
+                agentStatus.textContent = 'Error connecting';
+            }
+        });
+
+        leaveBtn.addEventListener('click', () => {
+            if (room) {
+                room.disconnect();
+                transcriptDiv.innerHTML = '';
+                agentStatus.textContent = 'Agent status: not connected';
+                console.log('Left room');
+            }
+            joinBtn.disabled = false;
+            leaveBtn.disabled = true;
+        });
+    </script>
+</body>
+
+</html>
