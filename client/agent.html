@@ -3,124 +3,285 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Real-Time Voice Chat with Leo</title>
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.0.4/dist/livekit-client.umd.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mariah AI Assistant</title>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #ff9a8b 0%, #ff6a88 55%, #acb6e5 100%);
+            --bg-color: #f8f9fa;
+        }
+
         body {
-            font-family: sans-serif;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
         }
 
+        /* Phone Container */
+        .phone-mockup {
+            width: 375px;
+            height: 812px;
+            background: white;
+            border-radius: 40px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Status Bar Mock */
+        .status-bar {
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        /* The Animated Orb */
+        .orb-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .orb {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(166, 193, 238, 0.5);
+            transition: transform 0.3s ease;
+        }
+
+        .orb.speaking {
+            animation: pulse 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+
+            50% {
+                transform: scale(1.1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+        }
+
+        .mic-icon {
+            width: 50px;
+            filter: invert(1) brightness(2);
+        }
+
+        /* Transcript Area */
         #transcript {
-            margin-top: 20px;
-            max-height: 400px;
+            padding: 20px 40px;
+            text-align: center;
+            color: #666;
+            font-size: 16px;
+            line-height: 1.5;
+            height: 200px;
             overflow-y: auto;
-            border: 1px solid #ccc;
-            padding: 10px;
-            background: #f9f9f9;
         }
 
-        .message {
-            margin: 8px 0;
+        .agent-text {
+            color: #333;
+            font-weight: 500;
         }
 
-        .user {
-            color: blue;
-        }
-
-        .agent {
-            color: green;
-        }
-
-        .interim {
-            opacity: 0.6;
+        .user-text {
+            color: #888;
             font-style: italic;
         }
 
+        /* Controls Footer */
+        .controls {
+            padding: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .visualizer-container {
+            flex: 1;
+            height: 40px;
+            margin: 0 20px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .btn-circle {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .btn-pause {
+            background: #f06215;
+            border: none;
+            color: white;
+            font-size: 20px;
+        }
+
         #agentStatus {
-            font-weight: bold;
-            margin-top: 10px;
+            position: absolute;
+            top: 60px;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .hidden {
+            display: none;
         }
     </style>
 </head>
 
 <body>
-    <h1>Voice Chat with Leo</h1>
-    <button id="joinBtn">Join Chat</button>
-    <button id="leaveBtn" disabled>Leave Chat</button>
-    <audio id="audioOutput" autoplay controls></audio>
 
-    <div id="agentStatus">Agent status: not connected</div>
-    <div id="transcript"></div>
+    <div class="phone-mockup">
+        <div class="status-bar">
+            <span>9:41</span>
+            <span>📶 🔋</span>
+        </div>
+
+        <div id="agentStatus">Not Connected</div>
+
+        <div class="orb-container">
+            <div id="orb" class="orb">
+                <img src="https://cdn-icons-png.flaticon.com/512/498/498418.png" class="mic-icon" alt="mic">
+            </div>
+        </div>
+
+        <div id="transcript">
+            Click "Join" to start talking to Mariah.
+        </div>
+
+        <div class="controls">
+            <button id="leaveBtn" class="btn-circle" disabled>×</button>
+
+            <div class="visualizer-container">
+                <canvas id="visualizer"></canvas>
+            </div>
+
+            <button id="joinBtn" class="btn-circle btn-pause">▶</button>
+        </div>
+    </div>
+
+    <audio id="audioOutput" class="hidden"></audio>
 
     <script>
-        const { Room, RoomEvent, createLocalTracks, DataPacketKind } = LivekitClient;
+        const { Room, RoomEvent, createLocalTracks } = LivekitClient;
+
         let room;
         const joinBtn = document.getElementById('joinBtn');
         const leaveBtn = document.getElementById('leaveBtn');
-        const audioOutput = document.getElementById('audioOutput');
         const transcriptDiv = document.getElementById('transcript');
         const agentStatus = document.getElementById('agentStatus');
-        let lastMessageDiv = null;
+        const orb = document.getElementById('orb');
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
 
-        // Helper to add messages to transcript
-        function addMessage(role, text, isInterim = false) {
-            if (isInterim && lastMessageDiv && lastMessageDiv.dataset.role === role && lastMessageDiv.dataset.isInterim === 'true') {
-                lastMessageDiv.textContent = `${role === 'user' ? 'You' : 'Leo'}: ${text}`;
-                return;
+        // Visualizer variables
+        let animationId;
+        let analyser;
+
+        async function setupVisualizer(stream) {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioCtx.createMediaStreamSource(stream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            function draw() {
+                animationId = requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+
+                canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+                canvasCtx.fillStyle = '#333';
+
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let x = 0;
+
+                for (let i = 0; i < bufferLength; i++) {
+                    const barHeight = (dataArray[i] / 255) * canvas.height;
+                    canvasCtx.fillRect(x, (canvas.height - barHeight) / 2, barWidth, barHeight);
+                    x += barWidth + 1;
+                }
             }
+            draw();
+        }
 
-            const div = document.createElement('div');
-            div.className = `message ${role} ${isInterim ? 'interim' : ''}`;
-            div.textContent = `${role === 'user' ? 'You' : 'Leo'}: ${text}`;
-            div.dataset.role = role;
-            div.dataset.isInterim = isInterim ? 'true' : 'false';
-
-            // If we were showing an interim message and now have a final one, or a new speaker, remove the 'interim' styling
-            if (!isInterim && lastMessageDiv && lastMessageDiv.dataset.role === role && lastMessageDiv.dataset.isInterim === 'true') {
-                lastMessageDiv.textContent = div.textContent;
-                lastMessageDiv.classList.remove('interim');
-                lastMessageDiv.dataset.isInterim = 'false';
-                return;
-            }
-
-            transcriptDiv.appendChild(div);
-            transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
-            lastMessageDiv = div;
+        function addMessage(role, text, isFinal) {
+            if (!isFinal) return; // Only show final sentences for cleaner UI
+            const className = role === 'agent' ? 'agent-text' : 'user-text';
+            transcriptDiv.innerHTML = `<div class="${className}">${text}</div>`;
         }
 
         joinBtn.addEventListener('click', async () => {
             try {
-                const response = await fetch('http://localhost:3000/get-token?room=voice-chat-room&user=user');
+                agentStatus.textContent = 'Connecting...';
+
+                // Replace with your actual token endpoint and LiveKit URL
+                const response = await fetch('YOUR_TOKEN_ENDPOINT');
                 const { token } = await response.json();
 
                 room = new Room();
 
-                // Listen for transcription text events (modern approach)
-                room.on(RoomEvent.TranscriptionReceived, (transcriptions, participant, publication) => {
-                    transcriptions.forEach((transcription) => {
-                        const isAgent = participant?.identity.includes('agent') || participant?.metadata?.includes('agent');
-                        const role = isAgent ? 'agent' : 'user';
-
-                        // The segment.text contains the transcribed text
-                        addMessage(role, transcription.text, !transcription.isFinal);
+                room.on(RoomEvent.TranscriptionReceived, (transcriptions, participant) => {
+                    transcriptions.forEach((t) => {
+                        const isAgent = participant?.identity.includes('agent');
+                        addMessage(isAgent ? 'agent' : 'user', t.text, t.isFinal);
                     });
                 });
 
-                // Agent state via track metadata
                 room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
                     if (track.kind === 'audio' && participant.identity.includes('agent')) {
-                        track.attach(audioOutput);
-                        audioOutput.play().catch(console.warn);
+                        track.attach(document.getElementById('audioOutput'));
 
-                        const updateStatus = () => {
+                        publication.on('metadataChanged', () => {
                             const meta = publication.metadata || '';
-                            if (meta.includes('speaking')) agentStatus.textContent = 'Agent status: speaking';
-                            else if (meta.includes('thinking')) agentStatus.textContent = 'Agent status: thinking';
-                            else if (meta.includes('listening')) agentStatus.textContent = 'Agent status: listening';
-                        };
-                        updateStatus();
-                        publication.on('metadataChanged', updateStatus);
+                            if (meta.includes('speaking')) {
+                                orb.classList.add('speaking');
+                                agentStatus.textContent = 'Mariah is speaking...';
+                            } else {
+                                orb.classList.remove('speaking');
+                                agentStatus.textContent = 'Listening...';
+                            }
+                        });
                     }
                 });
 
@@ -128,29 +289,27 @@
                 await room.startAudio();
 
                 const tracks = await createLocalTracks({ audio: true });
+                setupVisualizer(new MediaStream([tracks[0].mediaStreamTrack]));
+
                 for (const track of tracks) {
                     await room.localParticipant.publishTrack(track);
                 }
 
-                console.log('Joined room successfully');
                 joinBtn.disabled = true;
                 leaveBtn.disabled = false;
-                agentStatus.textContent = 'Agent status: joined';
+                joinBtn.textContent = '||';
+                agentStatus.textContent = 'Connected';
+
             } catch (error) {
-                console.error('Error joining chat:', error);
-                agentStatus.textContent = 'Error connecting';
+                console.error(error);
+                agentStatus.textContent = 'Error Connection';
             }
         });
 
         leaveBtn.addEventListener('click', () => {
-            if (room) {
-                room.disconnect();
-                transcriptDiv.innerHTML = '';
-                agentStatus.textContent = 'Agent status: not connected';
-                console.log('Left room');
-            }
-            joinBtn.disabled = false;
-            leaveBtn.disabled = true;
+            if (room) room.disconnect();
+            cancelAnimationFrame(animationId);
+            location.reload();
         });
     </script>
 </body>
